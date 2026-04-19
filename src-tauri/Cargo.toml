@@ -1,6 +1,6 @@
 [package]
 name = "cinema-iptv-2026"
-version = "0.1.0"
+version = "0.1.1"
 description = "Cinema 2026 IPTV Player - Fast and elegant IPTV player for Windows 11"
 authors = ["hamiche"]
 license = "MIT"
