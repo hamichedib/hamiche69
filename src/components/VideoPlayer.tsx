@@ -1,4 +1,5 @@
 import Hls from "hls.js";
+import mpegts from "mpegts.js";
 import {
   Maximize2,
   Minimize2,
@@ -13,6 +14,24 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { formatDuration, cn } from "../lib/utils";
 
+type MpegtsPlayer = {
+  attachMediaElement: (el: HTMLMediaElement) => void;
+  load: () => void;
+  play: () => Promise<void> | void;
+  unload: () => void;
+  detachMediaElement: () => void;
+  destroy: () => void;
+  on: (event: string, cb: (...args: unknown[]) => void) => void;
+};
+
+function detectKind(url: string): "hls" | "mpegts" | "native" {
+  const u = url.split("?")[0].toLowerCase();
+  if (u.endsWith(".m3u8")) return "hls";
+  if (u.endsWith(".ts") || u.endsWith(".mts") || u.endsWith(".m2ts")) return "mpegts";
+  if (/\/live\//.test(u) && !u.endsWith(".mp4")) return "mpegts";
+  return "native";
+}
+
 interface Props {
   src: string;
   title?: string;
@@ -26,6 +45,7 @@ export function VideoPlayer({ src, title, poster, onClose, autoplay = true, live
   const videoRef = useRef<HTMLVideoElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const mpegtsRef = useRef<MpegtsPlayer | null>(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -44,40 +64,124 @@ export function VideoPlayer({ src, title, poster, onClose, autoplay = true, live
     setErrorMsg(null);
     setBuffering(true);
 
+    // Clean up previous players
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
+    if (mpegtsRef.current) {
+      try {
+        mpegtsRef.current.unload();
+        mpegtsRef.current.detachMediaElement();
+        mpegtsRef.current.destroy();
+      } catch {
+        /* ignore */
+      }
+      mpegtsRef.current = null;
+    }
 
-    const isHls = /\.m3u8(\?|$)/i.test(src) || /\/live\//i.test(src);
-    const canNative = v.canPlayType("application/vnd.apple.mpegurl");
+    const kind = detectKind(src);
+    const canNativeHls = v.canPlayType("application/vnd.apple.mpegurl");
 
-    if (isHls && Hls.isSupported() && !canNative) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: live,
-        maxBufferLength: 30,
-      });
-      hlsRef.current = hls;
-      hls.loadSource(src);
-      hls.attachMedia(v);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (autoplay) void v.play().catch(() => undefined);
-      });
-      hls.on(Hls.Events.ERROR, (_e, data) => {
-        if (data.fatal) {
-          setErrorMsg("تعذر تشغيل البث. تحقق من الرابط أو الاتصال.");
-        }
-      });
-    } else {
+    const attachNative = () => {
       v.src = src;
+      v.load();
       if (autoplay) void v.play().catch(() => undefined);
+    };
+
+    if (kind === "hls") {
+      if (canNativeHls) {
+        attachNative();
+      } else if (Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: live,
+          maxBufferLength: 30,
+          xhrSetup: (xhr) => {
+            xhr.withCredentials = false;
+          },
+        });
+        hlsRef.current = hls;
+        hls.loadSource(src);
+        hls.attachMedia(v);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          if (autoplay) void v.play().catch(() => undefined);
+        });
+        hls.on(Hls.Events.ERROR, (_e, data) => {
+          if (data.fatal) {
+            // Fallback: try native <video> src as last resort.
+            try {
+              hls.destroy();
+            } catch {
+              /* ignore */
+            }
+            hlsRef.current = null;
+            const msg = `HLS ${data.type}: ${data.details ?? "fatal"}`;
+            console.error("[player]", msg, data);
+            attachNative();
+            setErrorMsg(
+              `فشل HLS (${data.details ?? data.type}). جاري تجربة التشغيل المباشر.`,
+            );
+          }
+        });
+      } else {
+        attachNative();
+      }
+    } else if (kind === "mpegts" && mpegts.getFeatureList().mseLivePlayback) {
+      const player = mpegts.createPlayer(
+        {
+          type: "mpegts",
+          url: src,
+          isLive: live,
+          cors: true,
+          withCredentials: false,
+        },
+        {
+          enableWorker: true,
+          enableStashBuffer: !live,
+          stashInitialSize: live ? 128 : undefined,
+          liveBufferLatencyChasing: live,
+          liveBufferLatencyMaxLatency: 3,
+          liveBufferLatencyMinRemain: 0.3,
+          autoCleanupSourceBuffer: true,
+          lazyLoad: false,
+        },
+      ) as unknown as MpegtsPlayer;
+      mpegtsRef.current = player;
+      player.attachMediaElement(v);
+      player.on("error", (...args: unknown[]) => {
+        console.error("[player] mpegts error", ...args);
+        setErrorMsg(`تعذر تشغيل MPEG-TS. ${String(args[0] ?? "")}`);
+      });
+      try {
+        player.load();
+        if (autoplay) void player.play();
+      } catch (e) {
+        console.error("[player] mpegts load", e);
+        queueMicrotask(() => setErrorMsg("تعذر بدء تحميل MPEG-TS."));
+      }
+    } else {
+      attachNative();
     }
 
     return () => {
       if (hlsRef.current) {
-        hlsRef.current.destroy();
+        try {
+          hlsRef.current.destroy();
+        } catch {
+          /* ignore */
+        }
         hlsRef.current = null;
+      }
+      if (mpegtsRef.current) {
+        try {
+          mpegtsRef.current.unload();
+          mpegtsRef.current.detachMediaElement();
+          mpegtsRef.current.destroy();
+        } catch {
+          /* ignore */
+        }
+        mpegtsRef.current = null;
       }
     };
   }, [src, autoplay, live]);
@@ -91,7 +195,13 @@ export function VideoPlayer({ src, title, poster, onClose, autoplay = true, live
     const onMeta = () => setDuration(v.duration || 0);
     const onWait = () => setBuffering(true);
     const onPlaying = () => setBuffering(false);
-    const onErr = () => setErrorMsg("خطأ في التشغيل");
+    const onErr = () => {
+      const err = v.error;
+      const code = err?.code ?? "?";
+      const msg = err?.message || "";
+      console.error("[player] video error", code, msg, v.currentSrc);
+      setErrorMsg(`خطأ في التشغيل (رمز ${code}). ${msg}`);
+    };
     v.addEventListener("play", onPlay);
     v.addEventListener("pause", onPause);
     v.addEventListener("timeupdate", onTime);
