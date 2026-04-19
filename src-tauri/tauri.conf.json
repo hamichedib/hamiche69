@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Cinema IPTV 2026",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "identifier": "com.cinema.iptv2026",
   "build": {
     "frontendDist": "../dist",
@@ -36,6 +36,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "externalBin": ["binaries/mpv"],
     "category": "Entertainment",
     "shortDescription": "Fast and elegant IPTV player for Windows 11",
     "longDescription": "Cinema IPTV 2026 - A beautiful, fast IPTV player with Live TV, Movies, Series, EPG, favorites, and Xtream Codes support.",

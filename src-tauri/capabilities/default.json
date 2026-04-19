@@ -15,6 +15,36 @@
     "core:webview:default",
     "opener:default",
     "shell:allow-open",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/mpv",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/mpv",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-kill",
+      "allow": [
+        {
+          "name": "binaries/mpv",
+          "sidecar": true,
+          "args": true
+        }
+      ]
+    },
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",
