@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
-import { Check, Cloud, FileCode2, Plus, Trash2 } from "lucide-react";
+import { Check, Cloud, FileCode2, Plus, Trash2, X } from "lucide-react";
 import { useAppStore } from "../stores/appStore";
 import { fetchText } from "../lib/http";
 import { xtreamAuth } from "../lib/xtream";
@@ -19,26 +19,38 @@ export function PlaylistsPage() {
   const loadError = useAppStore((s) => s.loadError);
   const [params, setParams] = useSearchParams();
   const shouldOpen = params.get("new") === "1";
-  const [open, setOpen] = useState(shouldOpen);
+  const [open, setOpen] = useState(false);
+  const hasPlaylists = playlists.length > 0;
 
   useEffect(() => {
     if (shouldOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setOpen(true);
       const next = new URLSearchParams(params);
       next.delete("new");
       setParams(next, { replace: true });
     }
   }, [shouldOpen, params, setParams]);
 
+  const onAddPlaylist = async (p: Playlist) => {
+    await add(p);
+    setOpen(false);
+  };
+
   return (
     <div className="space-y-5 pb-10">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-white">القوائم</h1>
           <div className="text-sm text-white/50">
             أضف قائمة M3U أو حساب Xtream Codes. يمكنك إضافة عدة قوائم والتبديل بينها.
           </div>
         </div>
-        <button className="btn-primary" onClick={() => setOpen(true)}>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => setOpen(true)}
+        >
           <Plus className="h-4 w-4" /> إضافة قائمة
         </button>
       </div>
@@ -49,11 +61,16 @@ export function PlaylistsPage() {
         </div>
       )}
 
-      {playlists.length === 0 ? (
-        <div className="card p-10 text-center">
-          <div className="text-white/70">لم تقم بإضافة أي قائمة بعد.</div>
+      {!hasPlaylists && (
+        <div className="card p-5">
+          <div className="text-white/70 text-sm mb-3">
+            لم تقم بإضافة أي قائمة بعد. أضف قائمتك الأولى من هنا مباشرة:
+          </div>
+          <PlaylistForm onAdd={onAddPlaylist} />
         </div>
-      ) : (
+      )}
+
+      {hasPlaylists && (
         <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
           {playlists.map((p) => (
             <div key={p.id} className="card p-4 flex flex-col gap-3">
@@ -77,6 +94,7 @@ export function PlaylistsPage() {
                   )}
                 </div>
                 <button
+                  type="button"
                   className="h-8 w-8 rounded-full bg-white/5 hover:bg-accent-500/20 flex items-center justify-center text-white/60 hover:text-accent-400"
                   onClick={() => void remove(p.id)}
                   title="حذف"
@@ -85,6 +103,7 @@ export function PlaylistsPage() {
                 </button>
               </div>
               <button
+                type="button"
                 className={cn(
                   "btn w-full",
                   active === p.id
@@ -106,17 +125,9 @@ export function PlaylistsPage() {
         </div>
       )}
 
-      <AnimatePresence>
-        {open && (
-          <AddPlaylistModal
-            onClose={() => setOpen(false)}
-            onAdd={async (p) => {
-              await add(p);
-              setOpen(false);
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {open && (
+        <AddPlaylistModal onClose={() => setOpen(false)} onAdd={onAddPlaylist} />
+      )}
     </div>
   );
 }
@@ -127,6 +138,52 @@ function AddPlaylistModal({
 }: {
   onClose: () => void;
   onAdd: (p: Playlist) => Promise<void>;
+}) {
+  const node = (
+    <div
+      className="fixed inset-0 bg-black/75 flex items-center justify-center p-4"
+      style={{ zIndex: 9999, backdropFilter: "blur(4px)" }}
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-lg rounded-2xl p-5 space-y-4 bg-ink-900 border border-white/15 shadow-2xl"
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-extrabold text-white">إضافة قائمة</h3>
+            <div className="text-xs text-white/60 mt-0.5">
+              دعم M3U/M3U8 و Xtream Codes. يمكنك استخدام أكثر من قائمة.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 w-9 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white"
+            title="إغلاق"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <PlaylistForm
+          onAdd={async (p) => {
+            await onAdd(p);
+          }}
+          onCancel={onClose}
+        />
+      </div>
+    </div>
+  );
+  if (typeof document === "undefined") return node;
+  return createPortal(node, document.body);
+}
+
+function PlaylistForm({
+  onAdd,
+  onCancel,
+}: {
+  onAdd: (p: Playlist) => Promise<void>;
+  onCancel?: () => void;
 }) {
   const [mode, setMode] = useState<Mode>("m3u-url");
   const [name, setName] = useState("قائمتي");
@@ -146,16 +203,9 @@ function AddPlaylistModal({
       if (mode === "m3u-url") {
         const url = m3uUrl.trim();
         if (!url) throw new Error("الرابط مطلوب");
-        // Best-effort validation: try to fetch, but DO NOT block add on failure.
-        // Many IPTV servers are slow, use self-signed certs, or rate-limit;
-        // we save the playlist and let the main sync surface any real error.
         try {
           const text = await fetchText(url, 15_000);
-          if (
-            text &&
-            !/#EXTM3U/i.test(text) &&
-            !/#EXTINF/i.test(text)
-          ) {
+          if (text && !/#EXTM3U/i.test(text) && !/#EXTINF/i.test(text)) {
             console.warn("[playlist] URL does not look like M3U, saving anyway");
           }
         } catch (probe) {
@@ -196,13 +246,9 @@ function AddPlaylistModal({
           epgUrl: epgUrl.trim() || undefined,
           createdAt: Date.now(),
         };
-        // Optional auth probe — don't block add if server is slow/unreachable,
-        // the full sync will show a clear error on the main page.
         try {
           const ok = await xtreamAuth(pl, (u) => fetchText(u, 15_000));
-          if (!ok) {
-            console.warn("[playlist] xtream auth returned non-success, saving anyway");
-          }
+          if (!ok) console.warn("[playlist] xtream auth returned non-success");
         } catch (probe) {
           console.warn("[playlist] xtream auth probe failed, saving anyway:", probe);
         }
@@ -249,106 +295,132 @@ function AddPlaylistModal({
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-40 bg-black/70 backdrop-blur flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.96, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.96, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        className="glass-strong w-full max-w-lg rounded-2xl p-5 space-y-4"
-      >
-        <div>
-          <h3 className="text-xl font-extrabold text-white">إضافة قائمة</h3>
-          <div className="text-xs text-white/60 mt-0.5">
-            دعم M3U/M3U8 و Xtream Codes. يمكنك استخدام أكثر من قائمة.
-          </div>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button className={cn("chip", mode === "m3u-url" && "chip-active")} onClick={() => setMode("m3u-url")}>
-            رابط M3U
-          </button>
-          <button className={cn("chip", mode === "m3u-file" && "chip-active")} onClick={() => setMode("m3u-file")}>
-            ملف محلي
-          </button>
-          <button className={cn("chip", mode === "xtream" && "chip-active")} onClick={() => setMode("xtream")}>
-            Xtream Codes
-          </button>
-        </div>
-        <div className="space-y-2">
-          <label className="text-xs text-white/60">اسم القائمة</label>
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        {mode === "m3u-url" && (
-          <div className="space-y-2">
-            <label className="text-xs text-white/60">رابط M3U</label>
-            <input
-              className="input"
-              value={m3uUrl}
-              onChange={(e) => setM3uUrl(e.target.value)}
-              placeholder="https://example.com/list.m3u"
-            />
-          </div>
-        )}
-        {mode === "m3u-file" && (
-          <div className="space-y-2">
-            <label className="text-xs text-white/60">محتوى الملف</label>
-            <div className="flex gap-2">
-              <button className="btn-ghost" onClick={openFile}>اختر ملفاً</button>
-            </div>
-            <textarea
-              className="input min-h-[120px] font-mono text-xs"
-              value={rawText}
-              onChange={(e) => setRawText(e.target.value)}
-              placeholder="#EXTM3U..."
-            />
-          </div>
-        )}
-        {mode === "xtream" && (
-          <div className="grid grid-cols-1 gap-2">
-            <div>
-              <label className="text-xs text-white/60">الخادم (Host)</label>
-              <input
-                className="input"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                placeholder="http://server.com:8080"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-white/60">اسم المستخدم</label>
-                <input className="input" value={user} onChange={(e) => setUser(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-xs text-white/60">كلمة المرور</label>
-                <input type="password" className="input" value={pass} onChange={(e) => setPass(e.target.value)} />
-              </div>
-            </div>
-          </div>
-        )}
-        <div className="space-y-2">
-          <label className="text-xs text-white/60">رابط EPG (اختياري XMLTV)</label>
+    <div className="space-y-3">
+      <div className="flex gap-2 flex-wrap">
+        <button
+          type="button"
+          className={cn("chip cursor-pointer", mode === "m3u-url" && "chip-active")}
+          onClick={() => setMode("m3u-url")}
+        >
+          رابط M3U
+        </button>
+        <button
+          type="button"
+          className={cn("chip cursor-pointer", mode === "m3u-file" && "chip-active")}
+          onClick={() => setMode("m3u-file")}
+        >
+          ملف محلي
+        </button>
+        <button
+          type="button"
+          className={cn("chip cursor-pointer", mode === "xtream" && "chip-active")}
+          onClick={() => setMode("xtream")}
+        >
+          Xtream Codes
+        </button>
+      </div>
+      <div className="space-y-1">
+        <label className="text-xs text-white/60">اسم القائمة</label>
+        <input
+          className="input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      {mode === "m3u-url" && (
+        <div className="space-y-1">
+          <label className="text-xs text-white/60">رابط M3U</label>
           <input
             className="input"
-            value={epgUrl}
-            onChange={(e) => setEpgUrl(e.target.value)}
-            placeholder="https://example.com/epg.xml"
+            value={m3uUrl}
+            onChange={(e) => setM3uUrl(e.target.value)}
+            placeholder="https://example.com/list.m3u"
+            dir="ltr"
           />
         </div>
-        {err && <div className="text-sm text-accent-300">{err}</div>}
-        <div className="flex justify-end gap-2 pt-2">
-          <button className="btn-ghost" onClick={onClose}>إلغاء</button>
-          <button className="btn-primary" onClick={submit} disabled={busy}>
-            {busy ? "جاري الإضافة..." : "إضافة"}
-          </button>
+      )}
+      {mode === "m3u-file" && (
+        <div className="space-y-1">
+          <label className="text-xs text-white/60">محتوى الملف</label>
+          <div className="flex gap-2">
+            <button type="button" className="btn-ghost" onClick={openFile}>
+              اختر ملفاً
+            </button>
+          </div>
+          <textarea
+            className="input min-h-[120px] font-mono text-xs"
+            value={rawText}
+            onChange={(e) => setRawText(e.target.value)}
+            placeholder="#EXTM3U..."
+            dir="ltr"
+          />
         </div>
-      </motion.div>
-    </motion.div>
+      )}
+      {mode === "xtream" && (
+        <div className="grid grid-cols-1 gap-2">
+          <div className="space-y-1">
+            <label className="text-xs text-white/60">الخادم (Host)</label>
+            <input
+              className="input"
+              value={host}
+              onChange={(e) => setHost(e.target.value)}
+              placeholder="http://server.com:8080"
+              dir="ltr"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <label className="text-xs text-white/60">اسم المستخدم</label>
+              <input
+                className="input"
+                value={user}
+                onChange={(e) => setUser(e.target.value)}
+                dir="ltr"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-white/60">كلمة المرور</label>
+              <input
+                type="password"
+                className="input"
+                value={pass}
+                onChange={(e) => setPass(e.target.value)}
+                dir="ltr"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="space-y-1">
+        <label className="text-xs text-white/60">رابط EPG (اختياري XMLTV)</label>
+        <input
+          className="input"
+          value={epgUrl}
+          onChange={(e) => setEpgUrl(e.target.value)}
+          placeholder="https://example.com/epg.xml"
+          dir="ltr"
+        />
+      </div>
+      {err && (
+        <div className="text-sm text-red-300 bg-red-500/10 border border-red-500/30 rounded-lg p-2">
+          {err}
+        </div>
+      )}
+      <div className="flex justify-end gap-2 pt-2">
+        {onCancel && (
+          <button type="button" className="btn-ghost" onClick={onCancel}>
+            إلغاء
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={submit}
+          disabled={busy}
+        >
+          {busy ? "جاري الإضافة..." : "إضافة"}
+        </button>
+      </div>
+    </div>
   );
 }
