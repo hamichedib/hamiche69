@@ -36,6 +36,7 @@ function stringifyArg(a: unknown): string {
 }
 
 let installed = false;
+// eslint-disable-next-line react-refresh/only-export-components
 export function installDebugCapture() {
   if (installed) return;
   installed = true;
