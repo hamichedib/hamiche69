@@ -144,22 +144,33 @@ function AddPlaylistModal({
     setErr(null);
     try {
       if (mode === "m3u-url") {
-        if (!m3uUrl.trim()) throw new Error("الرابط مطلوب");
-        // Validate by fetching
-        const text = await fetchText(m3uUrl.trim());
-        if (!text.includes("#EXTM3U") && !text.includes("#EXTINF")) {
-          throw new Error("الملف لا يبدو أنه M3U صالح");
+        const url = m3uUrl.trim();
+        if (!url) throw new Error("الرابط مطلوب");
+        // Best-effort validation: try to fetch, but DO NOT block add on failure.
+        // Many IPTV servers are slow, use self-signed certs, or rate-limit;
+        // we save the playlist and let the main sync surface any real error.
+        try {
+          const text = await fetchText(url, 15_000);
+          if (
+            text &&
+            !/#EXTM3U/i.test(text) &&
+            !/#EXTINF/i.test(text)
+          ) {
+            console.warn("[playlist] URL does not look like M3U, saving anyway");
+          }
+        } catch (probe) {
+          console.warn("[playlist] preflight fetch failed, saving anyway:", probe);
         }
         await onAdd({
           id: uid(),
           kind: "m3u",
           name: name.trim() || "قائمة M3U",
-          url: m3uUrl.trim(),
+          url,
           epgUrl: epgUrl.trim() || undefined,
           createdAt: Date.now(),
         });
       } else if (mode === "m3u-file") {
-        if (!rawText.trim()) throw new Error("ألصق محتوى ملف M3U");
+        if (!rawText.trim()) throw new Error("ألصق محتوى ملف M3U أو اختر ملفاً");
         await onAdd({
           id: uid(),
           kind: "m3u",
@@ -171,21 +182,34 @@ function AddPlaylistModal({
       } else {
         if (!host.trim() || !user.trim() || !pass.trim())
           throw new Error("كل حقول Xtream مطلوبة");
+        let normalizedHost = host.trim().replace(/\/$/, "");
+        if (!/^https?:\/\//i.test(normalizedHost)) {
+          normalizedHost = `http://${normalizedHost}`;
+        }
         const pl: Playlist = {
           id: uid(),
           kind: "xtream",
-          name: name.trim() || host.trim(),
-          host: host.trim(),
+          name: name.trim() || normalizedHost,
+          host: normalizedHost,
           username: user.trim(),
           password: pass.trim(),
           epgUrl: epgUrl.trim() || undefined,
           createdAt: Date.now(),
         };
-        const ok = await xtreamAuth(pl, fetchText);
-        if (!ok) throw new Error("فشل التوثيق. تحقق من البيانات.");
+        // Optional auth probe — don't block add if server is slow/unreachable,
+        // the full sync will show a clear error on the main page.
+        try {
+          const ok = await xtreamAuth(pl, (u) => fetchText(u, 15_000));
+          if (!ok) {
+            console.warn("[playlist] xtream auth returned non-success, saving anyway");
+          }
+        } catch (probe) {
+          console.warn("[playlist] xtream auth probe failed, saving anyway:", probe);
+        }
         await onAdd(pl);
       }
     } catch (e) {
+      console.error("[playlist] add failed", e);
       setErr(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
