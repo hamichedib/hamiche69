@@ -73,22 +73,32 @@ export const useAppStore = create<AppState>((set, get) => ({
   nowPlaying: null,
 
   init: async () => {
+    // Defensive: each load is independent so one corrupt/unavailable key
+    // cannot prevent the app from becoming ready.
+    const safe = async <T>(k: string, fb: T): Promise<T> => {
+      try {
+        return await loadKey<T>(k, fb);
+      } catch (e) {
+        console.warn(`[init] load "${k}" failed, using default:`, e);
+        return fb;
+      }
+    };
     const [playlists, activePlaylistId, favorites, recents, settings] = await Promise.all([
-      loadKey<Playlist[]>("playlists", []),
-      loadKey<string | null>("activePlaylistId", null),
-      loadKey<FavoriteKey[]>("favorites", []),
-      loadKey<FavoriteKey[]>("recents", []),
-      loadKey<Settings>("settings", DEFAULT_SETTINGS),
+      safe<Playlist[]>("playlists", []),
+      safe<string | null>("activePlaylistId", null),
+      safe<FavoriteKey[]>("favorites", []),
+      safe<FavoriteKey[]>("recents", []),
+      safe<Settings>("settings", DEFAULT_SETTINGS),
     ]);
     set({
-      playlists,
+      playlists: Array.isArray(playlists) ? playlists : [],
       activePlaylistId,
-      favorites,
-      recents,
-      settings: { ...DEFAULT_SETTINGS, ...settings },
+      favorites: Array.isArray(favorites) ? favorites : [],
+      recents: Array.isArray(recents) ? recents : [],
+      settings: { ...DEFAULT_SETTINGS, ...(settings ?? {}) },
       ready: true,
     });
-    if (activePlaylistId && playlists.find((p) => p.id === activePlaylistId)) {
+    if (activePlaylistId && (playlists ?? []).find((p) => p.id === activePlaylistId)) {
       void get().syncActivePlaylist();
     }
   },
