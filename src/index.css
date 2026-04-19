@@ -1,0 +1,179 @@
+@import url("https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --radius: 16px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+html {
+  font-family: "Inter", "Cairo", system-ui, -apple-system, Segoe UI, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background: #05060a;
+  color: #e5e7eb;
+  overflow: hidden;
+}
+
+html[dir="rtl"] body {
+  font-family: "Cairo", "Inter", system-ui, sans-serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.18);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/5 backdrop-blur-xl border border-white/10;
+  }
+  .glass-strong {
+    @apply bg-white/10 backdrop-blur-2xl border border-white/15;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-gradient-to-r from-accent-500 to-cine-purple text-white shadow-glow hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn bg-white/5 text-white hover:bg-white/10 border border-white/10;
+  }
+  .btn-danger {
+    @apply btn bg-accent-600 text-white hover:bg-accent-500;
+  }
+  .input {
+    @apply w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:ring-2 focus:ring-cine-purple/60 focus:border-transparent transition;
+  }
+  .card {
+    @apply rounded-2xl bg-ink-700/70 border border-white/5 shadow-card;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium bg-white/5 border border-white/10 text-white/80;
+  }
+  .chip-active {
+    @apply chip bg-gradient-to-r from-accent-500/30 to-cine-purple/30 border-white/20 text-white;
+  }
+  .nav-item {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/70 hover:text-white hover:bg-white/5 transition;
+  }
+  .nav-item-active {
+    @apply text-white bg-gradient-to-r from-accent-500/20 to-cine-purple/20 border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)];
+  }
+}
+
+.aurora {
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  filter: blur(80px);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.aurora::before,
+.aurora::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(40% 35% at 20% 30%, rgba(139, 92, 246, 0.55), transparent 60%),
+    radial-gradient(35% 30% at 80% 20%, rgba(34, 211, 238, 0.45), transparent 60%),
+    radial-gradient(45% 40% at 50% 90%, rgba(244, 63, 94, 0.45), transparent 60%),
+    radial-gradient(30% 30% at 80% 80%, rgba(236, 72, 153, 0.35), transparent 60%);
+  animation: aurora 22s ease-in-out infinite;
+}
+.aurora::after {
+  animation-duration: 34s;
+  animation-direction: reverse;
+  opacity: 0.7;
+}
+
+@keyframes aurora {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-3%, 2%, 0) scale(1.06);
+  }
+}
+
+.grid-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 70%);
+  z-index: -1;
+  opacity: 0.6;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+.drag {
+  -webkit-app-region: drag;
+}
+
+/* Video player overlay */
+.player-overlay {
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.85) 0%,
+    rgba(0, 0, 0, 0.3) 40%,
+    transparent 60%,
+    rgba(0, 0, 0, 0.5) 100%
+  );
+}
+
+.text-gradient {
+  background: linear-gradient(90deg, #f5c16c, #ec4899, #8b5cf6, #22d3ee);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 6s linear infinite;
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.04)
+  );
+  background-size: 600px 100%;
+  animation: shimmer 2.4s linear infinite;
+}
